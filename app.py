@@ -431,10 +431,11 @@ class HRDMeetingUpdate(Resource):
                                 for k_trav, v_trav in key_trav.items():
                                     if k_trav == "travel_id":
                                         trav_type = str(v_trav)
-                sqlTravel = """UPDATE meeting_register_partner
+                if(trav_type != ""):
+                    sqlTravel = """UPDATE meeting_register_partner
                                 SET travel_type = %s
                                 WHERE cid_account = '%s' AND code_master = '%s'""" % (trav_type, cid_account, code_master)
-                curs.execute(sqlTravel)
+                    curs.execute(sqlTravel)
                 #### End Update meeting_partner ###
 
                 #### insert meeting_partner ###
