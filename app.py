@@ -404,19 +404,39 @@ class HRDMeetingUpdate(Resource):
 
             for key in data_json["register"]:
                 if key != "code_master":
-                    if key != "re_date":
-                        if key == "expense_total":
-                            expense_total = int(data_json["register"]["expense_bus"])+int(data_json["register"]["expense_fuel"])+int(data_json["register"]["expense_airplane"])+int(data_json["register"]["expense_owncar"])+int(data_json["register"]["expense_residence"])+int(data_json["register"]["expense_register_meeting"])+int(data_json["register"]["expense_allowance"])+int(data_json["register"]["expense_other"])
-                            fields += str(key) + " = '" + str(expense_total) + "'"
-                        else:
-                            fields += str(key) + " = '" + str(data_json["register"][key]) + "',"
+                    if key != "cid_account":
+                        if key != "re_date":
+                            if key == "expense_total":
+                                expense_total = int(data_json["register"]["expense_bus"])+int(data_json["register"]["expense_fuel"])+int(data_json["register"]["expense_airplane"])+int(data_json["register"]["expense_owncar"])+int(data_json["register"]["expense_residence"])+int(data_json["register"]["expense_register_meeting"])+int(data_json["register"]["expense_allowance"])+int(data_json["register"]["expense_other"])
+                                fields += str(key) + " = '" + str(expense_total) + "'"
+                            else:
+                                fields += str(key) + " = '" + str(data_json["register"][key]) + "',"
             code_master = str(data_json["register"]["code_master"])
+            cid_account = str(data_json["register"]["cid_account"])
             sql = """UPDATE meeting_register SET %s
                     WHERE code_master = '%s'
                     """ % (fields, code_master)
+            # print(sql)
+            # print(data_json["register"])
             try:
                 #print(sql)
                 curs.execute(sql)  ### execute meeting_register ###
+                #### Update meeting_partner ###
+                trav_type = ""
+                for travel_change in data_json['travel_chagne']:
+                    for key_t, val_t in travel_change.items():
+                        if key_t != "":
+                            trav_data = getTravel(str(val_t))
+                            for key_trav in trav_data:
+                                for k_trav, v_trav in key_trav.items():
+                                    if k_trav == "travel_id":
+                                        trav_type = str(v_trav)
+                sqlTravel = """UPDATE meeting_register_partner
+                                SET travel_type = %s
+                                WHERE cid_account = '%s' AND code_master = '%s'""" % (trav_type, cid_account, code_master)
+                curs.execute(sqlTravel)
+                #### End Update meeting_partner ###
+
                 #### insert meeting_partner ###
                 fields_partner = "code_y, code_num, code_master, re_date, fullname , cid_account, cid_account_recoder, employee_type, emp_position, department, department_money, travel_type"
                 for key_partner in data_json["register_partner"]:
