@@ -326,7 +326,7 @@ class HRDMeetingUpdate(Resource):
             sql = """UPDATE hrd.meeting_register SET %s
                     WHERE re_id = '%s'
                     """ % (fields, re_id)
-            # print(data_json["register"])
+            #print(data_json["register"])
             try:
                 #print(sql)
                 curs.execute(sql)  ### execute meeting_register ###
@@ -393,28 +393,79 @@ class HRDMeetingUpdate(Resource):
                         getQueue = curs.execute(sqlQueue)
                         rv = curs.fetchall()
                         maxQueue = rv[0][0]
-                        queue_number = queue_number + maxQueue
+                        if maxQueue is None:
+                            queue_number = queue_number + 1
+                        else:
+                            queue_number = queue_number + maxQueue
                         #print(sqlQueue)
                         val_part = regID + ", '" + re_date + "', '" + fullname + "','" + idcard + "','" + recoder + "','" + employee_type + "','" + dep_code_id + "', '" + dep_code_id + "'," + str(
-                            travel_type) + "," + str(queue_number)
+                            travel_type) + "," + str(queue_number+1)
                         sql_partner = """INSERT INTO hrd.meeting_register_partner(%s) VALUES(%s)""" % (
                             fields_partner, val_part)
-                        print(sql_partner)
-                        print(queue_number)
-                        # curs.execute(
-                        #     sql_partner
-                        # )  ### execute meeting_register_partner ###
-                        queue_number +
+                        # print(sql_partner)
+                        # print(maxQueue)
+                        # print(queue_number)
+                        curs.execute(
+                            sql_partner
+                        )  ### execute meeting_register_partner ###
+                        #queue_number
                     ### END insert meeting_partner ###
-                # data.append({"status": 200, "msg": "OK"})
-                # return jsonify(data)
+                data.append({"status": 200, "msg": "OK"})
+                return jsonify(data)
             except Exception as e:
-                #return str(r)
                 data.append({"status": 400, "msg": str(e)})
                 return jsonify(data)
+                #return str(e)
         except Exception as err:
             return str(err)
-
+### เปลี่ยนคนไปราชการแทน ###
+@ns_hrd.route('/change/<re_id>/<idcard>', methods=['get'])
+class HRDChangePerson(Resource):
+    def get(self, re_id, idcard):
+        try:
+            cur = mysql.connection.cursor()
+            data = []
+            employee_type = ""
+            department = ""
+            fullname = ""
+            dep_code_id = ""
+            sqlUpdate = """UPDATE hrd.meeting_register
+                    SET cid_account = '%s',cid_account_recoder = '%s'
+                    WHERE re_id = %s
+                    """ % (idcard, idcard, re_id)
+            cur.execute(sqlUpdate)
+            payroll_data = getDataEmployee(idcard)
+            for key_payroll in payroll_data:
+                for k_pay, v_pay in key_payroll.items():
+                    if k_pay == "type_name":
+                        employee_type = v_pay
+                    elif k_pay == "fullname":
+                        fullname = str(v_pay)
+                    elif k_pay == "dep_name":
+                        department = str(v_pay)
+                        depart_data = getDepartment(department)
+                        for key_depart in depart_data:
+                            for k_depart, v_depart in key_depart.items():
+                                if k_depart == "dep_code_id":
+                                    dep_code_id = str(v_depart)
+            sqlPartner = """UPDATE hrd.meeting_register_partner
+                    SET fullname = '%s', cid_account = '%s',cid_account_recoder = '%s',
+                    employee_type = '%s', department = '%s'
+                    WHERE re_id = %s AND queue = 1
+                    """ % (fullname, idcard, idcard, employee_type, dep_code_id, re_id)
+            cur.execute(sqlPartner)
+            #print(sqlPartner)
+            sqlPartnerAll = """UPDATE hrd.meeting_register_partner
+                    SET cid_account_recoder = '%s'
+                    WHERE re_id = %s
+                    """ % (idcard, re_id)
+            cur.execute(sqlPartnerAll)
+            data.append({"status": 200, "msg": "OK"})
+            return jsonify(data)
+        except Exception as e:
+            #return e
+            data.append({"status": 400, "msg": str(e)})
+            return jsonify(data)
 
 ### ค้นหาข้อมูลขอไปราชการ ###
 @ns_hrd.route('/search', methods=['post'])
@@ -557,6 +608,7 @@ class getAll(Resource):
                 re_id = curs.lastrowid
                 values_partner += str(re_id) + ", "
                 # ### insert meeting_partner ###
+                #print(data_json["register_partner"])
                 for key_partner in data_json["register_partner"]:
                     for k, v in key_partner.items():
                         if k == "fullname":
@@ -603,7 +655,7 @@ class getAll(Resource):
                 data.append({"status": 400, "msg": str(e)})
                 return jsonify(data)
         except Exception as err:
-            print(err)
+            return str(err)
 
     def get(self):
         try:
@@ -865,6 +917,20 @@ def getPrefix(pname):
         json_data.append(dict(zip(row_headers, result)))
     return json_data
 
+def getDataEmployee(idcard):
+    curs = mysql.connection.cursor()
+    sql = """SELECT *, CONCAT(pname,fname,' ',lname) as fullname FROM payroll_employee
+            WHERE idcard = '%s' AND is_expire <> 'Y'
+            """ % (idcard)
+    curs.execute(sql)
+    # แยกส่วนหัวของแถว
+    row_headers = [x[0] for x in curs.description]
+    rv = curs.fetchall()
+    curs.close()
+    json_data = []
+    for result in rv:
+        json_data.append(dict(zip(row_headers, result)))
+    return json_data
 
 if __name__ == '__main__':
     #app.run(debug=True)
