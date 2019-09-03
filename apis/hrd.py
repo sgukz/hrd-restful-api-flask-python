@@ -515,7 +515,7 @@ class getAll(Resource):
             travel = ""
             pos_no = ""
             recoder = ""
-
+            #print(data_json["register"])
             for key in data_json["register"]:
                 if key != "cid_account_recoder":
                     if key == "expense_total":
@@ -562,7 +562,7 @@ class getAll(Resource):
                         values += """''"""
 
             fields += ", date_time_save"
-            values += ",'" + now.strftime("%Y-%m-%d %H:%M:%S") + "'"
+            values += ", NOW()"
             sql = """INSERT INTO hrd.meeting_register(%s)
                     VALUES(%s)
                     """ % (fields, values)
@@ -618,7 +618,7 @@ class getAll(Resource):
                 return jsonify(data)
             except Exception as e:
                 data.append({"status": 400, "msg": str(e)})
-                return jsonify(data)
+                return str(e)
         except Exception as err:
             return str(err)
 
@@ -938,4 +938,3 @@ def getDataEmployee(idcard):
     for result in rv:
         json_data.append(dict(zip(row_headers, result)))
     return json_data
-
