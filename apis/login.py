@@ -36,6 +36,7 @@ class HRDLogin(Resource):
                 	WHEN reh.degree = "ปฏิบัติการ" THEN CONCAT(reh.position_name,'',reh.degree)
                 	WHEN reh.degree = "ปฏิบัติงาน" THEN CONCAT(reh.position_name,'',reh.degree)
                 	WHEN reh.degree = "เชี่ยวชาญ" THEN CONCAT(reh.position_name,'',reh.degree)
+                	WHEN reh.degree = "ชำนาญงาน" THEN CONCAT(reh.position_name,'',reh.degree)
                 	ELSE reh.position_name
                 END as positionname
                 ,emp.idcard, CONCAT(emp.fname,' ',emp.lname) as fullname , COUNT(emp.idcard) chkLog
@@ -52,6 +53,7 @@ class HRDLogin(Resource):
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
 
+            #print(json_data)
             for key_data in json_data:
                 for k, v in key_data.items():
                     if k == "chkLog":
@@ -60,7 +62,7 @@ class HRDLogin(Resource):
                                 'code': 400,
                                 'msg': "Username or Password is wrong!!!"
                             }
-                            encode = jwt.encode(
+                            encoded = jwt.encode(
                                 {
                                     'data': [resp],
                                     'iat': iat,
@@ -68,14 +70,14 @@ class HRDLogin(Resource):
                                 },
                                 'secret',
                                 algorithm='HS256')
-                            encode_data = encode.decode('utf-8')
+                            encode_data = encoded.decode('utf-8')
                             return jsonify({
                                 'token': encode_data,
-                                'code': 200,
-                                'msg': "Login success"
+                                'code': 400,
+                                'msg': "Username or Password is wrong!!!"
                             })
                         else:
-                            encode = jwt.encode(
+                            encoded = jwt.encode(
                                 {
                                     'data': [json_data[0]],
                                     'iat': iat,
@@ -83,7 +85,7 @@ class HRDLogin(Resource):
                                 },
                                 'secret',
                                 algorithm='HS256')
-                            encode_data = encode.decode('utf-8')
+                            encode_data = encoded.decode('utf-8')
                             return jsonify({
                                 'token': encode_data,
                                 'code': 200,
