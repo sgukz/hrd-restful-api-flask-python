@@ -16,9 +16,9 @@ class Employee(Resource):
         cur = dbPayroll()
         try:
             cur.execute(
-                """SELECT *, idcard, CONCAT(fname,' ',lname) as fullname FROM payroll_employee 
+                """SELECT *, idcard, CONCAT(pname,fname,' ',lname) as fullname FROM payroll_employee 
                     HAVING is_expire <> 'Y' AND idcard <> "" 
-                    ORDER BY fname LIMIT 10""")
+                    ORDER BY fname""")
             # แยกส่วนหัวของแถว
             row_headers = [x[0] for x in cur.description]
             rv = cur.fetchall()
@@ -27,8 +27,140 @@ class Employee(Resource):
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
             return jsonify(json_data)
-        except Exception as e:
-            return str(e)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+### ข้อมูลตำแหน่งทั้งหมด ###
+@api.route('/positions', methods=['GET'])
+class Positions(Resource):
+    def get(self):
+        cur = dbPayroll()
+        try:
+            cur.execute(
+                """SELECT position_name FROM officerdata_db.reh_employee_tb 
+                    GROUP BY position_name
+                    ORDER BY position_name""")
+            # แยกส่วนหัวของแถว
+            row_headers = [x[0] for x in cur.description]
+            rv = cur.fetchall()
+            cur.close()
+            json_data = []
+            for result in rv:
+                json_data.append(dict(zip(row_headers, result)))
+            return jsonify(json_data)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+@api.route('/positions/create', methods=['POST'])
+class createPositions(Resource):
+    def post(self):
+        curs = dbPayroll()
+        try:
+            data_json = request.json
+            cid = str(data_json["position"]["cid"])
+            fix_name = str(data_json["position"]["fix_name"])
+            first_name = str(data_json["position"]["first_name"])
+            last_name = str(data_json["position"]["last_name"])
+            position_name = data_json["position"]["position_name"]
+            degree = data_json["position"]["degree"]
+
+            sql = """INSERT INTO officerdata_db.reh_employee_tb(cid, fix_name, first_name, last_name, position_name, degree)
+                    VALUES('%s', '%s', '%s', '%s', '%s', '%s')""" % (
+                cid, fix_name, first_name, last_name, position_name, degree)
+            curs.execute(sql)
+            curs.connection.commit()
+            curs.connection.close()
+            return jsonify({
+                "code": 200,
+                "msg": "บันทึกข้อมูลบุคลากร",
+                "text": "เรียบร้อยแล้ว",
+                "type": "success"
+            })
+        except Exception as err:
+            return jsonify({
+                "code": 400,
+                "msg": str(err),
+                "text": "เกิดข้อผิดพลาด",
+                "type": "error"
+            })
+
+
+@api.route('/positions/update', methods=['POST'])
+class updatePositions(Resource):
+    def post(self):
+        curs = dbPayroll()
+        data_json = request.json
+        try:
+            cid = data_json["position"]["cid"]
+            position_name = data_json["position"]["position_name"]
+            degree = data_json["position"]["degree"]            
+
+            sql = """UPDATE officerdata_db.reh_employee_tb SET position_name = '%s', degree = '%s'
+                    WHERE cid = '%s'""" % (position_name, degree, cid)
+            # print(sql)
+            curs.execute(sql)
+            curs.connection.commit()
+            curs.connection.close()
+            return jsonify({
+                "code": 200,
+                "msg": "แก้ไขข้อมูลบุคลากร",
+                "text": "เรียบร้อยแล้ว",
+                "type": "success"
+            })
+        except Exception as err:
+            # print(data_json["position"])
+            return jsonify({
+                "code": 400,
+                "msg": str(err),
+                "text": "เกิดข้อผิดพลาด",
+                "type": "error"
+            })
+
+
+### ข้อมูลบุคลากร ###
+@api.route('/reh-employee', methods=['GET'])
+class RehEmployee(Resource):
+    def get(self):
+        cur = dbPayroll()
+        try:
+            cur.execute(
+                """SELECT DISTINCT pr.idcard AS cid, pr.pname, pr.fname, pr.lname, re.position_name,
+                    CASE
+                        WHEN re.degree = 'ทรงคุณวุฒิ' THEN re.degree
+                        WHEN re.degree = 'ชำนาญการพิเศษ' THEN re.degree
+                        WHEN re.degree = 'ชำนาญการ' THEN re.degree
+                        WHEN re.degree = 'ปฏิบัติการ' THEN re.degree
+                        WHEN re.degree = 'ปฏิบัติงาน' THEN re.degree
+                        WHEN re.degree = 'เชี่ยวชาญ' THEN re.degree
+                        WHEN re.degree = 'ชำนาญงาน' THEN re.degree
+                        ELSE ''
+                    END as pos_degree,
+                    CASE
+                        WHEN re.is_active IS NULL THEN 0
+                        ELSE re.is_active
+                    END active
+                FROM
+                    payroll.payroll_employee pr
+                    LEFT JOIN officerdata_db.reh_employee_tb re
+                    ON pr.idcard = re.cid
+                WHERE
+                    pr.is_expire != 'Y' AND pr.idcard <> '' 
+                ORDER BY pr.fname""")
+            # แยกส่วนหัวของแถว
+            row_headers = [x[0] for x in cur.description]
+            rv = cur.fetchall()
+            cur.close()
+            json_data = []
+            for result in rv:
+                json_data.append(dict(zip(row_headers, result)))
+            return jsonify(json_data)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+###########################################################################
 
 
 ### ดึงข้อมูลหน่วยงานทั้งหมด ###
@@ -68,8 +200,11 @@ class HRDDepart(Resource):
                                     """ % (dep_name)
                             cur.execute(query)
             return jsonify(json_data)
-        except Exception as e:
-            return str(e)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+###########################################################################
 
 
 ### จัดการข้อมูลหน่วยงาน ###
@@ -93,8 +228,8 @@ class HRDDepartManage(Resource):
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
             return jsonify(json_data)
-        except Exception as e:
-            return str(e)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
 
     def post(self):
         try:
@@ -149,6 +284,9 @@ class HRDDepartManage(Resource):
             return jsonify(data)
 
 
+###########################################################################
+
+
 ### ค้นหาหน่วยงาน ###
 @api.route('/dep/search', methods=['post'])
 class HRDSearchDepart(Resource):
@@ -172,8 +310,11 @@ class HRDSearchDepart(Resource):
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
             return jsonify(json_data)
-        except Exception as e:
-            return str(e)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+###########################################################################
 
 
 ### ดึงข้อมูลหน่วยงานตามข้อมูลขอไปราชการ ###
@@ -196,8 +337,11 @@ class HRDDepartMeeting(Resource):
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
             return jsonify(json_data)
-        except Exception as e:
-            return str(e)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+###########################################################################
 
 
 ### ข้อมูลขอไปราชการรายบุคคลและแก้ไขข้อมูลไปราชการ ###
@@ -222,8 +366,8 @@ class HRDMeetingUpdate(Resource):
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
             return jsonify(json_data)
-        except Exception as e:
-            return e
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
 
     def post(self):
         try:
@@ -254,6 +398,7 @@ class HRDMeetingUpdate(Resource):
             cid = ""
             regID = ""
             valStr = ""
+            #print(data_json["hrdplan"])
             #print(data_json["register"])
             for key in data_json["register"]:
                 if key != "re_id":
@@ -266,16 +411,15 @@ class HRDMeetingUpdate(Resource):
                                     data_json["register"]["expense_fuel"]
                                 ) + int(
                                     data_json["register"]["expense_airplane"]
-                                ) + int(
-                                    data_json["register"]["expense_owncar"]
-                                ) + int(
-                                    data_json["register"]["expense_residence"]
                                 ) + int(data_json["register"]
-                                        ["expense_register_meeting"]) + int(
+                                        ["expense_owncar"]) + int(
                                             data_json["register"]
-                                            ["expense_allowance"]) + int(
+                                            ["expense_residence"]) + int(
                                                 data_json["register"]
-                                                ["expense_other"])
+                                                ["expense_register_meeting"])
+                                +int(
+                                    data_json["register"]["expense_allowance"]
+                                ) + int(data_json["register"]["expense_other"])
                                 fields += str(key) + " = '" + str(
                                     expense_total) + "'"
                             else:
@@ -293,18 +437,54 @@ class HRDMeetingUpdate(Resource):
                     WHERE re_id = '%s'
                     """ % (fields, re_id)
             try:
-                #print(data_json["register_partner"])
-                curs.execute(sql)  ### execute meeting_register ###
+                #print(sql)
+                ### execute meeting_register ###
+                curs.execute(sql)
+                curs.connection.commit()
+                ### UPDATE HRDPLAN ###
+                meeting_is = str(data_json["register"]["meeting_is"])
+                if meeting_is != "3":
+                    updateMeetingHRDPlan = """
+                        UPDATE hrd.meeting_register SET hrdplan_id = 0 WHERE re_id = '%s'
+                    """ % (re_id)
+                    #print(updateMeetingHRDPlan)
+                    curs.execute(updateMeetingHRDPlan)
+                    idPlan = str(data_json["hrdplan"])
+                    #print('ID Plan: ' + idPlan)
+                    if idPlan != "0":
+                        updateHRDPlan1 = """
+                            UPDATE hrdplandb.devolopplan SET id_meeting = NULL WHERE id = %s
+                        """ % (idPlan)
+                        #print(updateHRDPlan1)
+                        curs.execute(updateHRDPlan1)
+                        deleteFollowPlan = """
+                            DELETE FROM hrdplandb.follow_plan WHERE id_plan = %s
+                        """ % (idPlan)
+                        #print(deleteFollowPlan)
+                        curs.execute(deleteFollowPlan)
+                        curs.connection.commit()
+                else:
+                    hrdplan_id = data_json["register"]["hrdplan_id"]
+                    if hrdplan_id != "0":
+                        startdate = data_json["register"]["start_date"]
+                        enddate = data_json["register"]["end_date"]
+                        unitDate = formatTimestamp(startdate, enddate)
+                        updateHRDPlan = """
+                            UPDATE hrdplandb.devolopplan SET id_meeting = '%s' WHERE `id` = %s
+                        """ % (re_id, hrdplan_id)
+                        #print(updateHRDPlan)
+                        curs.execute(updateHRDPlan)
+                        addFollowPlan = """
+                            INSERT INTO hrdplandb.follow_plan(id_plan, startdate, enddate, unit_date, status_plan, create_date)
+                            VALUES(%s, '%s', '%s', %s, 1, NOW())
+                        """ % (hrdplan_id, startdate, enddate, unitDate)
+                        #print(addFollowPlan)_
+                        curs.execute(addFollowPlan)
+                ######################
+
                 #### Update meeting_partner ###
-                trav_type = ""
-                for travel_change in data_json['travel_chagne']:
-                    for key_t, val_t in travel_change.items():
-                        if key_t != "":
-                            trav_data = getTravel(str(val_t))
-                            for key_trav in trav_data:
-                                for k_trav, v_trav in key_trav.items():
-                                    if k_trav == "travel_id":
-                                        trav_type = str(v_trav)
+                trav_type = data_json['travel_chagne']
+                # print(data_json['travel_chagne'])
                 if (trav_type != ""):
                     sqlTravel = """UPDATE hrd.meeting_register_partner
                                 SET travel_type = %s
@@ -313,63 +493,47 @@ class HRDMeetingUpdate(Resource):
                     #print(sqlTravel)
                     curs.execute(sqlTravel)
                 #### End Update meeting_partner ###
-                queue_number = 0
-                #### insert meeting_partner ###
-                fields_partner = "re_id, re_date, fullname , cid_account, cid_account_recoder, employee_type, department, department_money, travel_type, queue"
+                queue_number = ""
+                # #### insert meeting_partner ###
+                # fields_partner = "re_id, re_date, fullname , cid_account, cid_account_recoder, employee_type, department, department_money, travel_type"
+                fields_partner = "re_id, re_date, fullname , cid_account, cid_account_recoder, employee_type, department, department_money, travel_type , queue, created_at"
+                old = ""
                 for key_partner in data_json["register_partner"]:
                     for k, v in key_partner.items():
-                        if k == "re_id":
-                            regID = str(v)
-                        elif k == "fullname":
-                            name = str(v)
-                            payroll_data = getIdcard(name)
-                            for key_payroll in payroll_data:
-                                for k_pay, v_pay in key_payroll.items():
-                                    if k_pay == "idcard":
-                                        idcard = v_pay
-                                    elif k_pay == "type_name":
-                                        employee_type = v_pay
-                                    elif k_pay == "fullname":
-                                        fullname = str(v_pay)
+                        if k == "fullname":
+                            fullname = str(v)
+                        elif k == "employee_type":
+                            employee_type = str(v)
+                        elif k == "cid_account":
+                            idcard = str(v)
+                        elif k == "cid_account_recoder":
+                            recoder = str(v)
                         elif k == "re_date":
                             re_date = str(v)
-                        elif k == "dep":
+                        elif k == "department":
                             department = str(v)
                             depart_data = getDepartment(department)
                             for key_depart in depart_data:
                                 for k_depart, v_depart in key_depart.items():
                                     if k_depart == "dep_code_id":
                                         dep_code_id = str(v_depart)
-                        elif k == "travel":
-                            travel = str(v)
-                            travel_data = getTravel(travel)
-                            for key_travel in travel_data:
-                                for k_tarvel, v_travel in key_travel.items():
-                                    if k_tarvel == "travel_id":
-                                        travel_type = v_travel
-                        elif k == "recoder":
-                            recoder = str(v)
-                        elif k == "cid":
-                            cid = str(v)
-                    if cid == '':
-                        sqlQueue = """SELECT MAX(queue) q_max
-                                     FROM hrd.meeting_register_partner
-                                     WHERE re_id = '%s'""" % (regID)
-                        getQueue = curs.execute(sqlQueue)
-                        rv = curs.fetchall()
-                        maxQueue = rv[0][0]
-                        if maxQueue is None:
-                            queue_number = queue_number + 1
-                        else:
-                            queue_number = queue_number + maxQueue
-                        val_part = regID + ", '" + re_date + "', '" + fullname + "','" + idcard + "','" + recoder + "','" + employee_type + "','" + dep_code_id + "', '" + dep_code_id + "'," + str(
-                            travel_type) + "," + str(queue_number + 1)
+                        elif k == "travel_type":
+                            travel_type = str(v)
+                        elif k == "queue":
+                            queue_number = str(v)
+                        elif k == "old":
+                            old = str(v)
+                    if old == "0":
+                        val_part = re_id + ", '" + re_date + "', '" + fullname + "','" + idcard + "','" + recoder + "','" + employee_type + "','" + dep_code_id + "', '" + dep_code_id + "'," + str(
+                            travel_type) + " ," + queue_number + " ,NOW()"
                         sql_partner = """INSERT INTO hrd.meeting_register_partner(%s) VALUES(%s)""" % (
                             fields_partner, val_part)
                         ### execute meeting_register_partner ###
+                        #print(sql_partner)
                         curs.execute(sql_partner)
-                #print(sql_partner)
-                #queue_number
+                # #queue_number
+                curs.connection.commit()
+                curs.connection.close()
                 ### END insert meeting_partner ###
                 data.append({"status": 200, "msg": "OK"})
                 return jsonify(data)
@@ -378,7 +542,10 @@ class HRDMeetingUpdate(Resource):
                 return jsonify(data)
                 #return str(e)
         except Exception as err:
-            return str(err)
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+###########################################################################
 
 
 ### เปลี่ยนคนไปราชการแทน ###
@@ -430,6 +597,9 @@ class HRDChangePerson(Resource):
             #return e
             data.append({"status": 400, "msg": str(e)})
             return jsonify(data)
+
+
+######################################################################################################
 
 
 ### ค้นหาข้อมูลขอไปราชการ ###
@@ -486,6 +656,9 @@ class HRDSearchMeeting(Resource):
             return str(e)
 
 
+######################################################################################################
+
+
 ### ข้อมูลการขอไปราชการทั้งหมดและลบข้อมูล ###
 @api.route('/registerall', methods=['GET'])
 @api.route('/create', methods=['POST'])
@@ -501,7 +674,7 @@ class getAll(Resource):
             data = []
             data_json = request.json
 
-            fields_partner += "re_id, re_date, fullname , cid_account, cid_account_recoder, employee_type, department, department_money, travel_type ,queue"
+            fields_partner += "re_id, re_date, fullname , cid_account, cid_account_recoder, employee_type, department, department_money, travel_type , queue, created_at"
             re_date = ""
             fullname = ""
             cid_account = ""
@@ -515,6 +688,7 @@ class getAll(Resource):
             travel = ""
             pos_no = ""
             recoder = ""
+            queue = ""
             #print(data_json["register"])
             for key in data_json["register"]:
                 if key != "cid_account_recoder":
@@ -569,58 +743,67 @@ class getAll(Resource):
             try:
                 #print(sql)
                 curs.execute(sql)
-                queue_number = 1
                 re_id = curs.lastrowid
+                ### UPDATE HRD PLAN ###
+                hrdplan_id = data_json["register"]["hrdplan_id"]
+                startdate = data_json["register"]["start_date"]
+                enddate = data_json["register"]["end_date"]
+                unitDate = formatTimestamp(startdate, enddate)
+                updateHRDPlan = """
+                    UPDATE hrdplandb.devolopplan SET id_meeting = '%s' WHERE `id` = %s
+                """ % (re_id, hrdplan_id)
+                #print(updateHRDPlan)
+                curs.execute(updateHRDPlan)
+                addFollowPlan = """
+                    INSERT INTO hrdplandb.follow_plan(id_plan, startdate, enddate, unit_date, status_plan, create_date)
+                    VALUES(%s, '%s', '%s', %s, 1, NOW())
+                """ % (hrdplan_id, startdate, enddate, unitDate)
+                curs.execute(addFollowPlan)
+                #print(addFollowPlan)
+                #######################
                 values_partner += str(re_id) + ", "
                 # ### insert meeting_partner ###
-                #print(data_json["register_partner"])
+                # print(data_json["register_partner"])
                 for key_partner in data_json["register_partner"]:
                     for k, v in key_partner.items():
                         if k == "fullname":
-                            name = str(v)
-                            payroll_data = getIdcard(name)
-                            for key_payroll in payroll_data:
-                                for k_pay, v_pay in key_payroll.items():
-                                    if k_pay == "idcard":
-                                        idcard = v_pay
-                                    elif k_pay == "type_name":
-                                        employee_type = v_pay
-                                    elif k_pay == "fullname":
-                                        fullname = str(v_pay)
+                            fullname = str(v)
+                        elif k == "employee_type":
+                            employee_type = str(v)
+                        elif k == "cid_account":
+                            idcard = str(v)
+                        elif k == "cid_account_recoder":
+                            recoder = str(v)
                         elif k == "re_date":
                             re_date = str(v)
-                        elif k == "dep":
+                        elif k == "department":
                             department = str(v)
                             depart_data = getDepartment(department)
                             for key_depart in depart_data:
                                 for k_depart, v_depart in key_depart.items():
                                     if k_depart == "dep_code_id":
                                         dep_code_id = str(v_depart)
-                        elif k == "travel":
-                            travel = str(v)
-                            travel_data = getTravel(travel)
-                            for key_travel in travel_data:
-                                for k_tarvel, v_travel in key_travel.items():
-                                    if k_tarvel == "travel_id":
-                                        travel_type = v_travel
-                        elif k == "recoder":
-                            recoder = str(v)
+                        elif k == "travel_type":
+                            travel_type = str(v)
+                        elif k == "queue":
+                            queue = str(v)
                     val_part = values_partner + "'" + re_date + "', '" + fullname + "','" + idcard + "','" + recoder + "','" + employee_type + "','" + dep_code_id + "', '" + dep_code_id + "'," + str(
-                        travel_type) + "," + str(queue_number)
+                        travel_type) + ",'" + queue + "',NOW()"
                     sql_partner = """INSERT INTO hrd.meeting_register_partner(%s) VALUES(%s)""" % (
                         fields_partner, val_part)
                     #print(sql_partner)
                     curs.execute(sql_partner)
-                    queue_number += 1
+                # queue_number += 1
                 ### END insert meeting_partner ###
-
+                curs.connection.commit()
+                curs.connection.close()
                 data.append({"status": 200, "msg": "OK"})
                 return jsonify(data)
             except Exception as e:
                 data.append({"status": 400, "msg": str(e)})
                 return str(e)
         except Exception as err:
-            return str(err)
+            return jsonify({"code": 400, "msg": str(err)})
 
     def get(self):
         try:
@@ -639,13 +822,14 @@ class getAll(Resource):
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
             return jsonify(json_data)
-        except Exception as e:
-            return e
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
 
     def delete(self, re_id):
         try:
             curs = dbPayroll()
             data = []
+            id_plan = ''
             delete_meeting = """DELETE FROM hrd.meeting_register
                                 WHERE re_id = '%s'
                                 """ % (re_id)
@@ -654,6 +838,23 @@ class getAll(Resource):
                                     WHERE re_id = '%s'
                                     """ % (re_id)
             curs.execute(delete_meeting_part)
+            data_plan = getIDPlan(re_id)
+            for key_plan in data_plan:
+                for k, v in key_plan.items():
+                    if k == "id":
+                        id_plan = str(v)
+            if id_plan != "":
+                updateHRDPlan = """
+                    UPDATE hrdplandb.devolopplan SET id_meeting = NULL
+                    WHERE `id` = '%s'
+                """ % (id_plan)
+                curs.execute(updateHRDPlan)
+                deleteFollowPlan = """
+                    DELETE FROM hrdplandb.follow_plan WHERE id_plan = '%s'
+                """ % (id_plan)
+                curs.execute(deleteFollowPlan)
+            curs.connection.commit()
+            curs.connection.close()
             data.append({"status": 200, "msg": "OK"})
             return jsonify(data)
         except Exception as err:
@@ -661,19 +862,27 @@ class getAll(Resource):
             return jsonify(data)
 
 
+######################################################################################################
+
+
 ### ดึงข้อมูลขอไปราชการแสดงเพื่อแก้ไขข้อมูล ###
 @api.route('/view/<cid_account>/<re_id>')
-class editMeeting(Resource):
+class EditMeeting(Resource):
     def get(self, cid_account, re_id):
         try:
             curs = dbPayroll()
-            sql = """SELECT * FROM hrd.meeting_register mr
-                    JOIN hrd.meeting_register_partner mrp ON mr.re_id = mrp.re_id
-                    JOIN hrd.meeting_travel mt ON mrp.travel_type = mt.travel_id
-                    JOIN hrd.department d ON mrp.department = d.dep_code_id
-                    WHERE mrp.cid_account = '%s' AND mr.re_id = '%s' LIMIT 1""" % (
-                cid_account, re_id)
+            sql = """
+                    SELECT mr.*, mr.expense_allowance expenseAllowance , mrp.*, mt.*, d.*, dev.*
+                    FROM hrd.meeting_register mr
+                        LEFT JOIN hrd.meeting_register_partner mrp ON mr.re_id = mrp.re_id
+                        LEFT JOIN hrd.meeting_travel mt ON mrp.travel_type = mt.travel_id
+                        LEFT JOIN hrd.department d ON mrp.department = d.dep_code_id
+                        LEFT JOIN hrdplandb.devolopplan dev ON mr.re_id = dev.id_meeting
+                    WHERE mrp.cid_account = '%s' AND mr.re_id = '%s'
+            """ % (cid_account, re_id)
             curs.execute(sql)
+            curs.connection.commit()
+            curs.connection.close()
             # แยกส่วนหัวของแถว
             row_headers = [x[0] for x in curs.description]
             rv = curs.fetchall()
@@ -681,24 +890,25 @@ class editMeeting(Resource):
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
             return jsonify(json_data)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
 
-        except Exception as e:
-            return str(e)
+
+################################################################
 
 
 ### ดึงข้อมูลผู้ร่วมไปราชการและลบผู้เข้าร่วมไปราชการ ###
-@api.route('/partner/<cid_account>/<re_id>', methods=['GET'])
+@api.route('/partner/<re_id>', methods=['GET'])
 @api.route('/deletepartner/<cid_account>/<re_id>', methods=['DELETE'])
 class partnerMeeting(Resource):
-    def get(self, cid_account, re_id):
+    def get(self, re_id):
         try:
             curs = dbPayroll()
             sql = """SELECT * FROM hrd.meeting_register_partner mrp
                         JOIN hrd.department d ON mrp.department = d.dep_code_id
                         JOIN hrd.meeting_travel mt ON mrp.travel_type = mt.travel_id
                     WHERE mrp.re_id = '%s'
-                        HAVING mrp.cid_account <> '%s'
-                    """ % (re_id, cid_account)
+                    ORDER BY queue""" % (re_id)
             # print(sql)
             curs.execute(sql)
             # แยกส่วนหัวของแถว
@@ -709,8 +919,8 @@ class partnerMeeting(Resource):
                 json_data.append(dict(zip(row_headers, result)))
             return jsonify(json_data)
 
-        except Exception as e:
-            return str(e)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
 
     def delete(self, cid_account, re_id):
         try:
@@ -727,6 +937,9 @@ class partnerMeeting(Resource):
         except Exception as err:
             data.append({"status": 400, "msg": str(err)})
             return jsonify(data)
+
+
+################################################################
 
 
 ### ข้อมูลบุคลากรในระบบ HRD Update ###
@@ -774,18 +987,93 @@ class updatePersonal(Resource):
                             result = "'" + cid + "' ,'" + pcode + "' ,'" + fname + "' ,'" + lname + "'"
                             query = """INSERT INTO hrd.personal(%s) VALUES(%s)""" % (
                                 fields, result)
-                            print(query)
+                            #print(query)
                             cur.execute(query)
             # # แยกส่วนหัวของแถว
             data.append({"status": 200, "msg": "OK"})
             return jsonify(data)
         except Exception as err:
-            return err
             data.append({"status": 400, "msg": str(err)})
             return jsonify(data)
 
 
-### รายการขอไปราชการรายบุคคล ###
+################################################################
+
+
+## ข้อมูลแผนพัฒนาบุคลากร ###
+@api.route('/hrdplan', methods=['POST'])
+class HRDPlan(Resource):
+    def post(self):
+        try:
+            cur = dbPayroll()
+            data_json = request.json
+            year = data_json['year']
+            depName = data_json['dep']
+            depart_data = getDepartment(depName)
+            for key_depart in depart_data:
+                for k_depart, v_depart in key_depart.items():
+                    if k_depart == "dep_code_id":
+                        dep_code_id = str(v_depart)
+
+            depID = ""
+            sql = """
+                SELECT `id`, other_course FROM hrdplandb.devolopplan WHERE dep_id = '%s' AND year_plan = '%s' AND id_meeting IS NULL
+                ORDER BY create_date DESC
+                """ % (dep_code_id, year)
+            cur.execute(sql)
+            # แยกส่วนหัวของแถว
+            row_headers = [x[0] for x in cur.description]
+            rv = cur.fetchall()
+            json_data = []
+            for result in rv:
+                json_data.append(dict(zip(row_headers, result)))
+            response = {'code': 200, 'data': json_data, 'msg': 'success'}
+            return jsonify(response)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+################################################################
+#########################################
+#                                       #
+#      ข้อมูลวัตถุประสงค์เพื่อพัฒนา            #
+#                                       #
+#########################################
+
+
+@api.route('/getMeetingPlan', methods=['GET'])
+class HRDMeetingPlan(Resource):
+    def get(self):
+        try:
+            curs = dbPayroll()
+            sql = """SELECT * FROM hrd.meeting_plan 
+                    WHERE is_active = 1 
+                    ORDER BY meeting_plan_id"""
+            # print(sql)
+            curs.execute(sql)
+            # แยกส่วนหัวของแถว
+            row_headers = [x[0] for x in curs.description]
+            rv = curs.fetchall()
+            json_data = []
+            for result in rv:
+                json_data.append(dict(zip(row_headers, result)))
+            response = {'code': 200, 'data': json_data, 'msg': 'success'}
+            return jsonify(response)
+
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+################################################################
+
+#########################################
+#                                       #
+#      Report รายงานการขอไปราชการ        #
+#                                       #
+#########################################
+
+
+### Report รายงานการอบรม / ประชุม / สัมนารายบุคคล ###
 @api.route('/report/person', methods=["post"])
 class ReportPerson(Resource):
     def post(self):
@@ -794,18 +1082,56 @@ class ReportPerson(Resource):
             data_json = request.json
             idcard = data_json["idcard"]
             place = data_json["place"]
-            if place == 0:
-                sql = """SELECT  @s:=@s+1 as `order`,mr.meeting_story, CONCAT(mr.start_date,',') start_date,CONCAT(mr.end_date,',') end_date, mr.meeting_place, mr.expense_total FROM hrd.meeting_register mr
-                    JOIN hrd.meeting_register_partner mrp ON mr.re_id = mrp.re_id, (SELECT @s:= 0) AS s
-                    WHERE mrp.cid_account = '%s'  
-                    ORDER BY mr.start_date  
-                    """ % (idcard)
+            if place == 0 or place == "":
+                sql = """
+                    SELECT
+                        @s:=@s+1 AS `order`,tmp_data.* 
+                    FROM
+                        (
+                        SELECT
+                            mr.re_id,
+                            mr.meeting_story,
+                            CONCAT( mr.start_date, '' ) start_date,
+                            CONCAT( mr.end_date, '' ) end_date,
+                            mr.meeting_host,
+                            mr.meeting_place,
+                            mr.expense_total 
+                        FROM
+                            hrd.meeting_register mr
+                            LEFT JOIN hrd.meeting_register_partner mrp ON mr.re_id = mrp.re_id 
+                        WHERE
+                            mrp.cid_account = '%s'
+                        ORDER BY
+                        mr.re_date DESC 
+                        ) AS tmp_data 
+                        , (SELECT @s:= 0) AS s;
+                """ % (idcard)
             else:
-                sql = """SELECT  @s:=@s+1 as `order`,mr.meeting_story, CONCAT(mr.start_date,',') start_date,CONCAT(mr.end_date,',') end_date, mr.meeting_place, mr.expense_total FROM hrd.meeting_register mr
-                    JOIN hrd.meeting_register_partner mrp ON mr.re_id = mrp.re_id, (SELECT @s:= 0) AS s
-                    WHERE mrp.cid_account = '%s' AND mr.meeting_place_type = %s  
-                    ORDER BY mr.start_date  
-                    """ % (idcard, place)
+                sql = """
+                    SELECT
+                        @s := @s + 1 AS `order`,tmp_data.* 
+                    FROM
+                        (
+                        SELECT
+                            mr.re_id,
+                            mr.meeting_story,
+                            CONCAT( mr.start_date, '' ) start_date,
+                            CONCAT( mr.end_date, '' ) end_date,
+                            mr.meeting_host,
+                            mr.meeting_place,
+                            mr.expense_total 
+                        FROM
+                            hrd.meeting_register mr
+                            LEFT JOIN hrd.meeting_register_partner mrp ON mr.re_id = mrp.re_id 
+                        WHERE
+                            mrp.cid_account = '%s' 
+                            AND mr.meeting_place_type = %s 
+                        ORDER BY
+                        mr.re_date DESC 
+                        ) AS tmp_data 
+                        , (SELECT @s:= 0) AS s;
+                """ % (idcard, place)
+            #print(sql)
             cur.execute(sql)
             # แยกส่วนหัวของแถว
             row_headers = [x[0] for x in cur.description]
@@ -813,16 +1139,73 @@ class ReportPerson(Resource):
             json_data = []
             for result in rv:
                 json_data.append(dict(zip(row_headers, result)))
-            return jsonify(json_data)
-        except Exception as e:
-            return e
+            response = {'code': 200, 'data': json_data, 'msg': 'success'}
+            return jsonify(response)
+        except Exception as err:
+            return jsonify({"code": 400, "msg": str(err)})
+
+
+########################################################
+
+# ### Report รายงานการอบรม / ประชุม / สัมนารายบุคคล ###
+# @api.route('/reportPerson', methods=["post"])
+# class HRDReportPerson(Resource):
+#     def post(self):
+#         try:
+#             cur = dbPayroll()
+#             data_json = request.json
+#             idcard = data_json["data"]["idcard"]
+#             meeting_place = data_json["data"]["place"]
+#             sql = """
+#                 SELECT
+#                     mr.re_id,
+#                     mr.meeting_story,
+#                     CONCAT( mr.start_date, '' ) start_date,
+#                     CONCAT( mr.end_date, '' ) end_date,
+#                     mr.meeting_host,
+#                     mr.meeting_place,
+#                     mr.expense_total
+#                 FROM
+#                     meeting_register mr
+#                     LEFT JOIN meeting_register_partner mrp ON mr.re_id = mrp.re_id
+#                 WHERE
+#                     mrp.cid_account = '%s'
+#                     AND mr.meeting_place_type = '%s'
+#                 ORDER BY
+#                     mr.re_date DESC;
+#             """ % (idcard, meeting_place)
+#             cur.execute(sql)
+#             # แยกส่วนหัวของแถว
+#             row_headers = [x[0] for x in cur.description]
+#             rv = cur.fetchall()
+#             json_data = []
+#             for result in rv:
+#                 json_data.append(dict(zip(row_headers, result)))
+#             response = {'code': 200, 'data': json_data, 'msg': 'success'}
+#             return jsonify(response)
+#         except Exception as err:
+#             return jsonify({"code": 400, "msg": err})
+# ##################################################
+
+
+### TEST Functions ####
+@api.route('/testFunctions', methods=["get"])
+class TestFunctions(Resource):
+    def get(self):
+        startdate = '2019-10-29'
+        enddate = '2019-10-30'
+        obj = formatTimestamp(startdate, enddate)
+        print(obj)
 
 
 ### Function get department ###
 def getDepartment(dep):
     #strDep = "%" + dep + "%"
     curs = dbPayroll()
-    sql = """SELECT * FROM hrd.department WHERE dep_code_name = '%s'""" % (dep)
+    sql = """
+            SELECT CONCAT(dep_code_id,'') dep_code_id, dep_code_name 
+            FROM hrd.department WHERE dep_code_name = '%s'
+            """ % (dep)
     curs.execute(sql)
     # แยกส่วนหัวของแถว
     row_headers = [x[0] for x in curs.description]
@@ -924,6 +1307,22 @@ def getPrefix(pname):
     return json_data
 
 
+def getIDPlan(idMeeting):
+    curs = dbPayroll()
+    getIDPlan = """
+        SELECT `id` FROM hrdplandb.devolopplan WHERE id_meeting = '%s'
+    """ % (idMeeting)
+    curs.execute(getIDPlan)
+    # แยกส่วนหัวของแถว
+    row_headers = [x[0] for x in curs.description]
+    rv = curs.fetchall()
+    curs.close()
+    json_data = []
+    for result in rv:
+        json_data.append(dict(zip(row_headers, result)))
+    return json_data
+
+
 def getDataEmployee(idcard):
     curs = dbPayroll()
     sql = """SELECT *, CONCAT(pname,fname,' ',lname) as fullname FROM payroll_employee
@@ -938,3 +1337,15 @@ def getDataEmployee(idcard):
     for result in rv:
         json_data.append(dict(zip(row_headers, result)))
     return json_data
+
+
+def formatTimestamp(startdate, enddate):
+    stDate = startdate.split('-')
+    enDate = enddate.split('-')
+    startDate = datetime(int(stDate[0]), int(stDate[1]), int(stDate[2]), 0, 0,
+                         0, 0)
+    endDate = datetime(int(enDate[0]), int(enDate[1]), int(enDate[2]), 0, 0, 0,
+                       0)
+    deffDate = endDate.timestamp() - startDate.timestamp()
+    resultDate = int(deffDate / (60 * 60 * 24))
+    return resultDate + 1

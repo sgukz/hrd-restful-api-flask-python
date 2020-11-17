@@ -39,7 +39,7 @@ class HRDLogin(Resource):
                 	WHEN reh.degree = "ชำนาญงาน" THEN CONCAT(reh.position_name,'',reh.degree)
                 	ELSE reh.position_name
                 END as positionname
-                ,emp.idcard, CONCAT(emp.fname,' ',emp.lname) as fullname , COUNT(emp.idcard) chkLog
+                ,emp.idcard, CONCAT(emp.pname,emp.fname,' ',emp.lname) as fullname , COUNT(emp.idcard) chkLog
                 FROM payroll.payroll_employee emp 
                 LEFT JOIN hrd.personal p ON emp.idcard = p.pid
                 LEFT JOIN officerdata_db.reh_employee_tb reh ON emp.idcard = reh.cid
